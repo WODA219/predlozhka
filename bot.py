@@ -14,7 +14,7 @@ import aiosqlite
 TOKEN = '8585031028:AAFUkaAvE6c7gKs15xs_DFS5HJHdXZCfQr0'
 ADMIN_ID = 8743889402  # Твой ID
 CHANNEL_ID = -1003936750917  # ID канала
-COOLDOWN_SECONDS = 60  # КД в секундах
+COOLDOWN_SECONDS = 150  # КД в секундах
 DB_NAME = 'school_bot.db'
 
 BANNED_MESSAGE = "🚫 <b>ВЫ ПОПАЛИ В СПИСОК ДАУНОВ</b> (для дегенератов: вас заблокировал админ) причину у админа спроси https://t.me/anonaskbot?start=a6dhbvl"
@@ -78,9 +78,8 @@ async def cmd_start(message: types.Message):
         return
 
     text = (
-        "Это предложка школы 1 шумилино, пиши че хочешь. Всё анонимно. "
-        "Правила: не спамить, желательно без матов, +18 контент запрещен. "
-        "Наказание: бан в предложке 👇"
+        "Это предложка подслушано школы 1 шумилино, пиши 👇. "
+        
     )
     await message.answer(text)
 
@@ -96,7 +95,7 @@ async def handle_suggestion(message: types.Message):
 
     if user_id != ADMIN_ID:
         if not await check_and_update_cooldown(user_id):
-            await message.answer("Подожди немного! Отправлять сообщения можно раз в минуту.")
+            await message.answer("подожди 150 секунд")
             return
 
     raw_text = message.text or message.caption or ""
@@ -120,7 +119,7 @@ async def handle_suggestion(message: types.Message):
             await bot.send_message(chat_id=CHANNEL_ID, text=channel_text)
     except TelegramAPIError as e:
         logging.error(f"Ошибка отправки в канал: {e}")
-        await message.answer("Произошла ошибка при публикации. Администратор уже уведомлен.")
+        await message.answer("Произошла ошибка при публикации")
         return
 
     # --- Отправка Админу ---
@@ -132,11 +131,11 @@ async def handle_suggestion(message: types.Message):
         f"👤 Имя: <a href='tg://user?id={user_id}'>{name}</a>\n"
         f"🆔 ID: <code>{user_id}</code>\n"
         f"🔗 Ссылка: {username}\n\n"
-        f"<i>Свайпни что бы ответить (только у админа)</i>"
+        f"<i>Свайпни что бы ответить</i>"
     )
     
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚫 ЗАБЛОКИРОВАТЬ", callback_data=f"ban_{user_id}")]
+        [InlineKeyboardButton(text="🚫 Заблокировать", callback_data=f"ban_{user_id}")]
     ])
     
     try:
@@ -148,7 +147,7 @@ async def handle_suggestion(message: types.Message):
     except TelegramAPIError as e:
         logging.error(f"Ошибка отправки админу: {e}")
 
-    await message.answer("Сообщение отправлено. ✅ Всё опубликовано полностью анонимно. Чекай канал. Если хочешь отправить что-то еще — пиши прямо сюда.")
+    await message.answer("✅ Сообщение отправлено в подслушано.")
 
 
 @dp.callback_query(F.data.startswith('ban_'))
@@ -165,7 +164,7 @@ async def ban_callback(callback: types.CallbackQuery):
     
     # Меняем кнопку на "РАЗБЛОКИРОВАТЬ"
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ РАЗБЛОКИРОВАТЬ", callback_data=f"unban_{target_id}")]
+        [InlineKeyboardButton(text="✅ Разблокировать", callback_data=f"unban_{target_id}")]
     ])
     
     if callback.message.photo:
@@ -219,7 +218,7 @@ async def admin_reply_to_user(message: types.Message):
         
         try:
             await bot.send_message(chat_id=target_id, text=response_to_user, disable_web_page_preview=True)
-            await message.reply("✅ Ваш ответ успешно доставлен пользователю.")
+            await message.reply("✅ ответ отправлен")
         except TelegramAPIError:
             await message.reply("❌ Не удалось доставить. Возможно, пользователь заблокировал бота.")
     else:
