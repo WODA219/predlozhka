@@ -14,7 +14,7 @@ import aiosqlite
 TOKEN = '8585031028:AAFUkaAvE6c7gKs15xs_DFS5HJHdXZCfQr0'
 ADMIN_ID = 8743889402  # Твой ID
 CHANNEL_ID = -1003936750917  # ID канала
-COOLDOWN_SECONDS = 150  # КД в секундах
+COOLDOWN_SECONDS = 60  # КД в секундах
 DB_NAME = 'school_bot.db'
 
 BANNED_MESSAGE = "🚫 <b>ВЫ ПОПАЛИ В СПИСОК ДАУНОВ</b> (для дегенератов: вас заблокировал админ) причину у админа спроси https://t.me/anonaskbot?start=a6dhbvl"
@@ -46,6 +46,12 @@ async def ban_user(user_id: int):
         await db.execute("INSERT OR IGNORE INTO blacklist (user_id) VALUES (?)", (user_id,))
         await db.commit()
 
+async def unban_user(user_id: int):
+    """Удаляет пользователя из черного списка."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("DELETE FROM blacklist WHERE user_id = ?", (user_id,))
+        await db.commit()
+
 async def check_and_update_cooldown(user_id: int) -> bool:
     current_time = time.time()
     async with aiosqlite.connect(DB_NAME) as db:
@@ -72,9 +78,9 @@ async def cmd_start(message: types.Message):
         return
 
     text = (
-        "это предложка школы 1 шумилино. всё анонимно."
-        "Пиши "
-        "👇"
+        "Это предложка школы 1 шумилино, пиши че хочешь. Всё анонимно. "
+        "Правила: не спамить, желательно без матов, +18 контент запрещен. "
+        "Наказание: бан в предложке 👇"
     )
     await message.answer(text)
 
@@ -84,22 +90,18 @@ async def handle_suggestion(message: types.Message):
     """Обработчик входящих предложенных новостей (текст и фото)"""
     user_id = message.from_user.id
 
-    # 1. Проверка на бан
     if await is_banned(user_id):
         await message.answer(BANNED_MESSAGE)
         return
 
-    # 2. Проверка КД
     if user_id != ADMIN_ID:
         if not await check_and_update_cooldown(user_id):
-            await message.answer("жди 150 секунд")
+            await message.answer("Подожди немного! Отправлять сообщения можно раз в минуту.")
             return
 
-    # Получаем текст или подпись к фото
     raw_text = message.text or message.caption or ""
     text_safe = raw_text.replace('<', '&lt;').replace('>', '&gt;')
 
-    # Формируем блоки текста
     if text_safe:
         channel_content = f"<blockquote><i>{text_safe}</i></blockquote>"
         admin_content = f"<blockquote>{text_safe}</blockquote>"
@@ -118,7 +120,7 @@ async def handle_suggestion(message: types.Message):
             await bot.send_message(chat_id=CHANNEL_ID, text=channel_text)
     except TelegramAPIError as e:
         logging.error(f"Ошибка отправки в канал: {e}")
-        await message.answer("произошла ошибка при публикации")
+        await message.answer("Произошла ошибка при публикации. Администратор уже уведомлен.")
         return
 
     # --- Отправка Админу ---
@@ -130,11 +132,11 @@ async def handle_suggestion(message: types.Message):
         f"👤 Имя: <a href='tg://user?id={user_id}'>{name}</a>\n"
         f"🆔 ID: <code>{user_id}</code>\n"
         f"🔗 Ссылка: {username}\n\n"
-        f"<i>Свайпни что бы ответить</i>"
+        f"<i>Свайпни что бы ответить (только у админа)</i>"
     )
     
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚫 Заблокировать", callback_data=f"ban_{user_id}")]
+        [InlineKeyboardButton(text="🚫 ЗАБЛОКИРОВАТЬ", callback_data=f"ban_{user_id}")]
     ])
     
     try:
@@ -146,15 +148,14 @@ async def handle_suggestion(message: types.Message):
     except TelegramAPIError as e:
         logging.error(f"Ошибка отправки админу: {e}")
 
-    # --- Ответ пользователю об успехе ---
-    await message.answer("Сообщение отправлено в подслушано")
+    await message.answer("Сообщение отправлено. ✅ Всё опубликовано полностью анонимно. Чекай канал. Если хочешь отправить что-то еще — пиши прямо сюда.")
 
 
 @dp.callback_query(F.data.startswith('ban_'))
 async def ban_callback(callback: types.CallbackQuery):
     """Обработчик кнопки БАН у админа"""
     if callback.from_user.id != ADMIN_ID:
-        await callback.answer("У вас нет прав", show_alert=True)
+        await callback.answer("У вас нет прав!", show_alert=True)
         return
 
     target_id = int(callback.data.split('_')[1])
@@ -162,38 +163,63 @@ async def ban_callback(callback: types.CallbackQuery):
     
     new_text = f"🚫 Пользователь <code>{target_id}</code> заблокирован."
     
-    # Меняем подпись (если фото) или текст (если обычное сообщение)
+    # Меняем кнопку на "РАЗБЛОКИРОВАТЬ"
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ РАЗБЛОКИРОВАТЬ", callback_data=f"unban_{target_id}")]
+    ])
+    
+    if callback.message.photo:
+        await callback.message.edit_caption(caption=new_text, reply_markup=markup)
+    else:
+        await callback.message.edit_text(text=new_text, reply_markup=markup)
+        
+    await callback.answer("Пользователь добавлен в черный список!")
+
+
+@dp.callback_query(F.data.startswith('unban_'))
+async def unban_callback(callback: types.CallbackQuery):
+    """Обработчик кнопки РАЗБАН у админа"""
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("У вас нет прав!", show_alert=True)
+        return
+
+    target_id = int(callback.data.split('_')[1])
+    await unban_user(target_id)
+    
+    new_text = f"✅ Пользователь <code>{target_id}</code> разблокирован."
+    
+    # Убираем все кнопки после разбана
     if callback.message.photo:
         await callback.message.edit_caption(caption=new_text)
     else:
         await callback.message.edit_text(text=new_text)
         
-    await callback.answer("Пользователь заблокирован")
+    await callback.answer("Пользователь удален из черного списка!")
 
 
 @dp.message(F.reply_to_message & (F.from_user.id == ADMIN_ID))
 async def admin_reply_to_user(message: types.Message):
-    """Свайп для ответа (работает и с фото, и с текстом)"""
-    # Достаем текст или подпись (если админ свайпнул фото)
+    """Свайп для ответа"""
     reply_text = message.reply_to_message.text or message.reply_to_message.caption
     if not reply_text:
         return
 
-    # Ищем ID пользователя
     match = re.search(r"🆔 ID:\s*(\d+)", reply_text)
     if match:
         target_id = int(match.group(1))
         admin_answer = message.text.replace('<', '&lt;').replace('>', '&gt;')
         
+        # Обновленный текст ответа с припиской перед ссылкой
         response_to_user = (
             f"<b>Ответ от администратора:</b>\n"
             f"<blockquote>{admin_answer}</blockquote>\n\n"
+            f"анонка адмна\n"
             f"https://t.me/anonaskbot?start=a6dhbvl"
         )
         
         try:
             await bot.send_message(chat_id=target_id, text=response_to_user, disable_web_page_preview=True)
-            await message.reply("✅ ответ отправлен ")
+            await message.reply("✅ Ваш ответ успешно доставлен пользователю.")
         except TelegramAPIError:
             await message.reply("❌ Не удалось доставить. Возможно, пользователь заблокировал бота.")
     else:
@@ -204,7 +230,7 @@ async def admin_reply_to_user(message: types.Message):
 async def main():
     await init_db()
     await bot.delete_webhook(drop_pending_updates=True)
-    print("Бот успешно запущен и готов принимать фото/текст!")
+    print("Бот успешно запущен!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
