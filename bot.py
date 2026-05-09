@@ -210,7 +210,7 @@ async def admin_reply_to_user(message: types.Message):
         
         # Обновленный текст ответа с припиской перед ссылкой
         response_to_user = (
-            f"<b>Ответ от администратора:</b>\n"
+            f"<b>ответ от админа:</b>\n"
             f"<blockquote>{admin_answer}</blockquote>\n\n"
             f"анонка адмна\n"
             f"https://t.me/anonaskbot?start=a6dhbvl"
